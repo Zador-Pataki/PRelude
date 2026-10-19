@@ -4,14 +4,14 @@
 {% block pageclass %}narrow{% endblock %}
 {% block content %}
 <h1>Memory</h1>
-<p class="hint">Claude follows these in every review and keeps them up to date as you review. Open one to read, edit, or tell Claude what to change.</p>
+<p class="hint">PRelude follows these in every review and keeps them up to date as you review. Open one to read, edit, or tell PRelude what to change.</p>
 <ul class="list memory-list">
 {% for d in docs %}
   <li>
     <a class="card" href="/memory/doc?scope={{ d.scope | urlencode }}">
       <div class="card-title">{{ d.title }}</div>
       {% if d.doc %}<div class="preview">{{ d.doc | replace("#", "") | trim }}</div>
-      {% else %}<div class="meta">Empty. {% if d.scope == 'global' %}Tell Claude how you like to review.{% elif d.scope == 'style' %}Grows as you edit comments.{% else %}Notes for this repository.{% endif %}</div>{% endif %}
+      {% else %}<div class="meta">Empty. {% if d.scope == 'global' %}Tell PRelude how you like to review.{% elif d.scope == 'style' %}Grows as you edit comments.{% else %}Notes for this repository.{% endif %}</div>{% endif %}
     </a>
   </li>
 {% endfor %}

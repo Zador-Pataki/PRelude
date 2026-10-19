@@ -1,4 +1,4 @@
-"""A PR's discussion space: threads with Claude, each forking the latest review's session, then
+"""A PR's discussion space: threads with the backend, each forking the latest review's session, then
 continuing its own. Threads reply in parallel; each one takes one message at a time."""
 
 from __future__ import annotations
@@ -6,9 +6,10 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from dataclasses import replace
 from pathlib import Path
 
-from . import claude, notify
+from . import backend, notify
 from .config import Config
 from .db import Store
 from .discuss import Broker, DiscussionBusy, Event
@@ -36,15 +37,16 @@ def start_thread(store: Store, cfg: Config, broker: Broker, owner: str, repo: st
 
 
 def post_message(store: Store, cfg: Config, broker: Broker, chat_id: int, text: str) -> threading.Thread:
-    """Store the reviewer's message and start Claude's reply in the background."""
+    """Store the reviewer's message and start the reply in the background."""
     text = text.strip()
     if not text:
         raise ValueError("empty message")
     chat = store.get_chat(chat_id)
     if chat is None:
         raise KeyError(chat_id)
+    cfg = replace(cfg, backend=chat["backend"])
     if not store.try_lock_chat(chat_id):
-        raise DiscussionBusy("Claude is still replying to the previous message")
+        raise DiscussionBusy("PRelude is still replying to the previous message")
     try:
         earlier = [m["content"] for m in store.chat_messages(chat_id) if m["role"] == "user"]
         store.add_chat_message(chat_id, "user", text)
@@ -79,19 +81,18 @@ def _reply(
 ) -> None:
     final, ok, session_id = Event("done"), False, None
     try:
-        auth = claude.auth_for(cfg)
-        claude.ensure_logged_in(auth)
-        result = claude.run_stream(
+        backend.ensure_logged_in(cfg)
+        result = backend.run_stream(
+            cfg,
             prompt,
             worktree,
             on_text=lambda s: broker.publish(chat_id, Event("text", s)),
             on_activity=lambda name: broker.publish(chat_id, Event("activity", name)),
-            model=cfg.claude.model,
-            effort=cfg.claude.effort,
+            model=cfg.agent.model,
+            effort=cfg.agent.effort,
             resume=resume,
             fork=fork,
-            timeout=cfg.claude.discuss_timeout_seconds,
-            auth=auth,
+            timeout=cfg.agent.discuss_timeout_seconds,
         )
         store.add_chat_message(chat_id, "assistant", result.text.strip())
         session_id, ok = result.session_id, True

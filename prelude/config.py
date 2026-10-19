@@ -22,6 +22,13 @@ DEFAULT_CONFIG = """\
 # other GitHub repository (useful while trying it out).
 only_repo: null
 
+backend: claude                  # claude or codex
+
+# Codex uses `codex login`. Reviewer settings below (except auth) also apply here.
+codex:
+  model: null
+  effort: null
+
 # Claude settings. `model: null` and `effort: null` use Claude Code's defaults.
 claude:
   # subscription: your Claude Code login (Pro/Max). api_key: an Anthropic API key, billed per
@@ -45,7 +52,7 @@ claude:
   discuss_timeout_seconds: 900
 
 # Diffs larger than this many characters are not inlined in the review prompt;
-# Claude reads the changed files with its tools instead.
+# The reviewer reads the changed files with its tools instead.
 max_inline_diff_chars: 150000
 
 # Comments go into your pending GitHub review (you submit it yourself on GitHub), except
@@ -116,8 +123,7 @@ DEFAULT_LENSES = (
 
 
 @dataclass
-class ClaudeConfig:
-    auth: str = "subscription"  # or "api_key"
+class AgentConfig:
     model: str | None = None
     effort: str | None = None
     reviewers: int = AUTO
@@ -125,6 +131,11 @@ class ClaudeConfig:
     lenses: list[str] = field(default_factory=lambda: list(DEFAULT_LENSES))
     review_timeout_seconds: int = 1500
     discuss_timeout_seconds: int = 900
+
+
+@dataclass
+class ClaudeConfig(AgentConfig):
+    auth: str = "subscription"  # or "api_key"
 
 
 @dataclass
@@ -145,13 +156,19 @@ class DraftsConfig:
 class Config:
     data_dir: Path
     only_repo: str | None = None
+    backend: str = "claude"
     claude: ClaudeConfig = field(default_factory=ClaudeConfig)
+    codex: AgentConfig = field(default_factory=AgentConfig)
     server: ServerConfig = field(default_factory=ServerConfig)
     drafts: DraftsConfig = field(default_factory=DraftsConfig)
     triggers: TriggerConfig = field(default_factory=TriggerConfig)
     notify: NotifyConfig = field(default_factory=NotifyConfig)
     max_inline_diff_chars: int = 150_000
     raw: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def agent(self) -> AgentConfig:
+        return self.codex if self.backend == "codex" else self.claude
 
     @property
     def db_path(self) -> Path:
@@ -170,7 +187,7 @@ class Config:
         return self.data_dir / "access_key"
 
     def reviewers_for(self, changed_lines: int) -> int:
-        for max_lines, n in self.claude.reviewers_by_size:
+        for max_lines, n in self.agent.reviewers_by_size:
             if max_lines is None or changed_lines <= max_lines:
                 return n
         return 1
@@ -199,26 +216,20 @@ def load_config(data_dir: Path | None = None) -> Config:
         path.write_text(DEFAULT_CONFIG)
     raw = yaml.safe_load(path.read_text()) or {}
 
+    backend = raw.get("backend", "claude")
+    if backend not in ("claude", "codex"):
+        raise ValueError("backend must be claude or codex")
     claude_raw = raw.get("claude") or {}
     server_raw = raw.get("server") or {}
     drafts_raw = raw.get("github_drafts") or {}
     return Config(
         data_dir=data_dir,
         only_repo=(raw.get("only_repo") or None),
+        backend=backend,
         claude=ClaudeConfig(
-            auth=_auth(claude_raw.get("auth", "subscription")),
-            model=claude_raw.get("model"),
-            effort=_effort(claude_raw.get("effort")),
-            reviewers=_reviewers(claude_raw.get("reviewers", "auto")),
-            reviewers_by_size=[
-                (row.get("max_lines"), _reviewers(row.get("reviewers", 1)) or 1)
-                for row in (claude_raw.get("reviewers_by_size") or [])
-            ]
-            or list(DEFAULT_BY_SIZE),
-            lenses=[str(x) for x in (claude_raw.get("lenses") or DEFAULT_LENSES)],
-            review_timeout_seconds=int(claude_raw.get("review_timeout_seconds", 1500)),
-            discuss_timeout_seconds=int(claude_raw.get("discuss_timeout_seconds", 900)),
+            auth=_auth(claude_raw.get("auth", "subscription")), **_agent_settings(claude_raw, "claude")
         ),
+        codex=AgentConfig(**_agent_settings(raw.get("codex") or {}, "codex")),
         server=ServerConfig(
             host=server_raw.get("host", "127.0.0.1"),
             port=int(server_raw.get("port", 8787)),
@@ -241,6 +252,22 @@ def load_config(data_dir: Path | None = None) -> Config:
     )
 
 
+def _agent_settings(raw: dict, name: str) -> dict:
+    return dict(
+        model=raw.get("model"),
+        effort=_effort(raw.get("effort"), name),
+        reviewers=_reviewers(raw.get("reviewers", "auto")),
+        reviewers_by_size=[
+            (row.get("max_lines"), _reviewers(row.get("reviewers", 1)) or 1)
+            for row in (raw.get("reviewers_by_size") or [])
+        ]
+        or list(DEFAULT_BY_SIZE),
+        lenses=[str(x) for x in (raw.get("lenses") or DEFAULT_LENSES)],
+        review_timeout_seconds=int(raw.get("review_timeout_seconds", 1500)),
+        discuss_timeout_seconds=int(raw.get("discuss_timeout_seconds", 900)),
+    )
+
+
 def _notify_details(raw: dict) -> str:
     if "include_details" in raw and "details" not in raw:  # older configs
         return "full" if raw["include_details"] is True else "none"
@@ -251,11 +278,11 @@ def _notify_details(raw: dict) -> str:
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 
 
-def _effort(value: Any) -> str | None:
+def _effort(value: Any, name: str = "claude") -> str | None:
     if value is None:
         return None
     if str(value) not in EFFORTS:
-        raise ValueError(f"claude.effort: {value!r} isn't one of {', '.join(EFFORTS)}")
+        raise ValueError(f"{name}.effort: {value!r} isn't one of {', '.join(EFFORTS)}")
     return str(value)
 
 

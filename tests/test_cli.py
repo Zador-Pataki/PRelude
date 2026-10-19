@@ -89,7 +89,7 @@ def test_discuss_prints_the_reply_and_its_proposal(run, store, done_review, fake
         "FAKE_CLAUDE_REPLY", "Fair. Shorter:\n```comment\nPlease return 401 here.\n```\nVERDICT: revised"
     )
     code, out = run("discuss", done_review, 1, "Make it shorter?")
-    assert code == 0 and "Fair. Shorter" in out and "Please return 401 here." in out and "--claude" in out
+    assert code == 0 and "Fair. Shorter" in out and "Please return 401 here." in out and "--proposed" in out
     run("edit", done_review, 1, "--claude")
     assert store.findings_for(done_review)[0]["user_draft"] == "Please return 401 here."
     assert run.learned == []  # Claude's words teach nothing about the reviewer's style

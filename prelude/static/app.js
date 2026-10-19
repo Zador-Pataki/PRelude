@@ -1,5 +1,5 @@
 // PRelude: the little JavaScript the server-rendered pages need.
-// - stream Claude's discussion replies (Server-Sent Events), several threads at once
+// - stream discussion replies (Server-Sent Events), several threads at once
 // - grow text areas with their content
 // - focus the discussion box from the action bar
 
@@ -49,7 +49,7 @@
       }
       // The suggested wording and verdict are shown properly once the reply is complete.
       if (live) live.textContent = text.split("```comment")[0].replace(/\n?VERDICT:.*$/i, "").trim();
-      if (activity) activity.textContent = "Claude is writing…";
+      if (activity) activity.textContent = "PRelude is writing…";
     });
     source.addEventListener("activity", function (e) {
       const tool = JSON.parse(e.data);

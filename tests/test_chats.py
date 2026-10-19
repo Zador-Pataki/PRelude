@@ -86,7 +86,7 @@ def test_reply_notifies_without_naming_the_repo_in_the_link(client, done_review,
     while not sent and time.time() < deadline:
         time.sleep(0.05)
     body, headers = sent[0]
-    assert headers["Title"] == "Claude replied" and body.startswith("B1ueber2y/PRelude#1")
+    assert headers["Title"] == "PRelude replied" and body.startswith("B1ueber2y/PRelude#1")
     assert headers["Click"].endswith(f"/chats/{chat_id}")
 
 
@@ -190,7 +190,7 @@ def test_comments_are_indexed_as_threads(client, done_review, store, fake_claude
     r = client.post(f"/findings/{f1['id']}/messages", data={"text": "Thanks"}, headers={"X-Inline": "1"})
     assert f'id="fchat-{f1["id"]}"' in r.text and "Reply in thread" in r.text
     wait_finding_idle(store, f1["id"])
-    assert "Claude is replying" not in client.get(f"/findings/{f1['id']}/thread?open=1").text
+    assert "PRelude is replying" not in client.get(f"/findings/{f1['id']}/thread?open=1").text
 
 
 def test_comment_page_says_you_need_not_wait(client, done_review, store):  # noqa: F811
@@ -200,7 +200,7 @@ def test_comment_page_says_you_need_not_wait(client, done_review, store):  # noq
     page = client.get(f"/findings/{f1['id']}").text
     assert "No need to wait here" in page and f"/findings/{f2['id']}" in page
     rows = client.get(f"/reviews/{done_review}").text
-    assert "Claude is replying" in rows
+    assert "PRelude is replying" in rows
 
 
 def test_terminal_discussions_send_no_ping(store, cfg, done_review, fake_claude, monkeypatch):

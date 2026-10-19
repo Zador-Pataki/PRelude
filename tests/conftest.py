@@ -36,6 +36,21 @@ def never_real_claude(monkeypatch):
     monkeypatch.delenv("FAKE_CLAUDE_LOG", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def never_real_codex(monkeypatch):
+    fake = Path(__file__).with_name("fake_codex.py")
+    fake.chmod(fake.stat().st_mode | stat.S_IXUSR)
+    monkeypatch.setenv("PRELUDE_CODEX_BIN", str(fake))
+    monkeypatch.delenv("FAKE_CODEX_LOG", raising=False)
+
+
+@pytest.fixture
+def fake_codex(monkeypatch, tmp_path):
+    log = tmp_path / "runner-calls.jsonl"
+    monkeypatch.setenv("FAKE_CODEX_LOG", str(log))
+    return log
+
+
 @pytest.fixture
 def cfg(tmp_path):
     cfg = load_config(tmp_path / "data")

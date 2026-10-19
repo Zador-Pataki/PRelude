@@ -1,5 +1,4 @@
-"""Running a review: fetch the PR, check it out, ask Claude (one reviewer, or several plus a
-meta-reviewer), store findings."""
+"""Fetch and check out a PR, run one reviewer or a panel, and store findings."""
 
 from __future__ import annotations
 
@@ -9,11 +8,11 @@ import os
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from . import claude, drafting, failures
+from . import backend, drafting, failures
 from .config import EFFORTS, Config
 from .db import Store
 from .diffmap import parse_diff
@@ -60,7 +59,7 @@ def start_review(
         raise ValueError(f"unknown review mode {mode!r}")
     if effort is not None and effort not in EFFORTS:
         raise ValueError(f"unknown effort {effort!r}")
-    n = max(0, min(8, cfg.claude.reviewers if reviewers is None else reviewers))  # 0 = by PR size
+    n = max(0, min(8, cfg.agent.reviewers if reviewers is None else reviewers))  # 0 = by PR size
     return store.create_review(
         ref.owner,
         ref.repo,
@@ -71,6 +70,7 @@ def start_review(
         previous_review_id=previous_review_id,
         mode=mode,
         effort=effort,
+        backend=cfg.backend,
     )
 
 
@@ -89,10 +89,10 @@ def _normalize(raw: dict[str, Any], files: dict) -> dict[str, Any]:
     return f
 
 
-def _structured(result: claude.RunResult) -> dict[str, Any]:
+def _structured(result: backend.RunResult) -> dict[str, Any]:
     out = result.structured
     if not isinstance(out, dict) or not isinstance(out.get("findings"), list):
-        raise claude.ClaudeError("Claude returned no structured findings")
+        raise backend.RunError("The backend returned no structured findings")
     return out
 
 
@@ -116,15 +116,15 @@ class _Job:
     def progress(self, text: str) -> None:
         self.store.update_review(self.review_id, progress=text)
 
-    def run(self, prompt: str, schema: dict) -> claude.RunResult:
-        return claude.run_json(
+    def run(self, prompt: str, schema: dict) -> backend.RunResult:
+        return backend.run_json(
+            self.cfg,
             prompt,
             self.co.worktree,
             schema=schema,
-            model=self.cfg.claude.model,
+            model=self.cfg.agent.model,
             effort=self.effort,
-            timeout=self.cfg.claude.review_timeout_seconds,
-            auth=claude.auth_for(self.cfg),
+            timeout=self.cfg.agent.review_timeout_seconds,
         )
 
     def review_prompt(self, lens: str | None = None) -> str:
@@ -145,15 +145,15 @@ class _Job:
         )
 
 
-def _single(job: _Job) -> tuple[dict, claude.RunResult, float]:
-    job.progress("Claude is reviewing")
+def _single(job: _Job) -> tuple[dict, backend.RunResult, float]:
+    job.progress("Reviewing the PR")
     result = job.run(job.review_prompt(), REVIEW_SCHEMA)
     return _structured(result), result, result.cost_usd or 0.0
 
 
 def _run_reviewers(job: _Job, n: int, first_lens: int = 0) -> tuple[list[dict], float]:
     """N independent reviewers in parallel, each with its own focus."""
-    lenses = job.cfg.claude.lenses or [None]
+    lenses = job.cfg.agent.lenses or [None]
     reports: list[dict] = []
     cost = 0.0
     job.progress(f"{n} reviewers are reviewing (0/{n} done)")
@@ -171,11 +171,11 @@ def _run_reviewers(job: _Job, n: int, first_lens: int = 0) -> tuple[list[dict], 
                 log.warning("one reviewer of review %s failed", job.review_id, exc_info=True)
             job.progress(f"{n} reviewers are reviewing ({done}/{n} done)")
     if not reports:
-        raise claude.ClaudeError(f"all {n} reviewers failed")
+        raise backend.RunError(f"all {n} reviewers failed")
     return reports, cost
 
 
-def _panel(job: _Job, n: int) -> tuple[dict, claude.RunResult, float, list[dict]]:
+def _panel(job: _Job, n: int) -> tuple[dict, backend.RunResult, float, list[dict]]:
     """N independent reviewers, then a meta-reviewer merges their reports."""
     reports, cost = _run_reviewers(job, n)
     job.progress(f"Meta-reviewer is merging {len(reports)} reports")
@@ -290,17 +290,18 @@ def run_review(
     row = store.get_review(review_id)
     if row is None:
         raise KeyError(review_id)
+    cfg = replace(cfg, backend=row["backend"])
     ref = PrRef(row["owner"], row["repo"], row["number"])
     try:
         check_repo(cfg, ref.owner, ref.repo)
         store.update_review(
             review_id,
             status="running",
-            progress="Checking Claude login",
+            progress="Checking reviewer login",
             error=None,
             runner_pid=os.getpid(),
         )
-        claude.ensure_logged_in(claude.auth_for(cfg))
+        backend.ensure_logged_in(cfg)
 
         store.update_review(review_id, progress="Reading the PR from GitHub")
         github = github or GitHubReader(cfg)
@@ -343,7 +344,7 @@ def run_review(
             memory=Memory(cfg).prompt_section(ref.owner, ref.repo, store.recent_edits()),
             previous=_previous(store, cfg, row, pr.head_sha),
             comments=comments_section(pr_comments),
-            effort=row["effort"] or cfg.claude.effort,
+            effort=row["effort"] or cfg.agent.effort,
         )
         reports = None
         if n > 1:
@@ -371,7 +372,7 @@ def run_review(
             summary=out.get("summary") or "",
             comment_status=json.dumps(out.get("existing_comments") or []),
             claude_session_id=result.session_id,
-            cost_usd=cost,
+            cost_usd=cost if result.cost_usd is not None else None,
             reports=None if reports is None else json.dumps(reports),
         )
     except Exception as e:  # recorded for the UI; the server keeps running
@@ -398,6 +399,7 @@ def add_reviewers(
     row = store.get_review(review_id)
     if row is None or row["status"] != "done":
         raise ValueError("only a finished review can get more reviewers")
+    cfg = replace(cfg, backend=row["backend"])
     ref = PrRef(row["owner"], row["repo"], row["number"])
     try:
         check_repo(cfg, ref.owner, ref.repo)
@@ -405,7 +407,7 @@ def add_reviewers(
             store.update_review(
                 review_id, progress=f"Adding {n} reviewer{'s' if n > 1 else ''}", error=None, runner_pid=os.getpid()
             )
-        claude.ensure_logged_in(claude.auth_for(cfg))
+        backend.ensure_logged_in(cfg)
         pr = (github or GitHubReader(cfg)).pull_request(ref)
         if pr.head_sha != row["head_sha"]:
             raise failures.PrMoved("the PR has new commits since this review; use Review again instead")
@@ -425,7 +427,7 @@ def add_reviewers(
             memory=Memory(cfg).prompt_section(ref.owner, ref.repo, store.recent_edits()),
             comments=comments_section(_read_comments(github or GitHubReader(cfg), ref), judge=False),
             previous=_previous(store, cfg, row, pr.head_sha),
-            effort=row["effort"] or cfg.claude.effort,
+            effort=row["effort"] or cfg.agent.effort,
         )
         before = row["reviewers"] or 1
         reports, cost = _run_reviewers(job, n, first_lens=before)
@@ -465,7 +467,7 @@ def add_reviewers(
             progress=None,
             finished_at=time.time(),
             reviewers=before + len(reports),
-            cost_usd=(row["cost_usd"] or 0) + cost + (result.cost_usd or 0),
+            cost_usd=(row["cost_usd"] or 0) + cost + result.cost_usd if result.cost_usd is not None else None,
         )
         send(
             cfg.notify,

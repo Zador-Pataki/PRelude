@@ -71,7 +71,7 @@ def reply_ready(
     owner, repo, number = pr
     return send(
         cfg,
-        "Claude replied" if ok else "Claude couldn't reply",
+        "PRelude replied" if ok else "PRelude couldn't reply",
         pr_prefix(cfg, f"{owner}/{repo}#{number}", title) + ("in a discussion" if ok else "see PRelude for details"),
         path=path,
         tags=("speech_balloon" if ok else "warning") + ("" if cfg.details == "none" else f",{repo}"),

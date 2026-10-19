@@ -6,11 +6,12 @@ import json
 import os
 import subprocess
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
 from typing import Any
 
+from .backend import LoginError, RunError, RunResult
 from .retry import retry
 
 SAFE_FLAGS = [
@@ -38,13 +39,11 @@ SUBSCRIPTION, API_KEY = "subscription", "api_key"
 KEY_FILE = "anthropic_api_key"  # in the data dir, mode 0600
 
 
-class ClaudeError(RuntimeError):
-    def __init__(self, message: str, transient: bool = False):
-        super().__init__(message)
-        self.transient = transient
+class ClaudeError(RunError):
+    provider = "Claude"
 
 
-class ClaudeNotLoggedIn(ClaudeError):
+class ClaudeNotLoggedIn(ClaudeError, LoginError):
     pass
 
 
@@ -163,15 +162,6 @@ def ensure_logged_in(auth: Auth | None = None) -> dict[str, Any]:
             "on a Claude subscription login (or set claude.auth: api_key)."
         )
     return status
-
-
-@dataclass
-class RunResult:
-    session_id: str
-    text: str
-    structured: Any = None
-    cost_usd: float | None = None
-    raw: dict[str, Any] = field(default_factory=dict)
 
 
 def _base_args(model: str | None, effort: str | None, resume: str | None, fork: bool) -> list[str]:

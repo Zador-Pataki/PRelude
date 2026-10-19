@@ -9,7 +9,7 @@
     </div>
     <div class="chat-first">{{ f.title }}</div>
     <div class="meta">
-      {%- if f.busy %}<span class="spinner small" aria-hidden="true"></span> Claude is replying…
+      {%- if f.busy %}<span class="spinner small" aria-hidden="true"></span> PRelude is replying…
       {%- elif f.messages %}{{ f.messages }} message{{ '' if f.messages == 1 else 's' }} · {{ f.last_at | ago }}
       {%- else %}<span class="muted">Not discussed</span>{% endif %}
       {%- if f.unread and not f.busy %} <span class="tag accent unread">new reply</span>{% endif -%}
