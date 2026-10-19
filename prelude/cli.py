@@ -13,7 +13,7 @@ import tempfile
 import textwrap
 from pathlib import Path
 
-from . import claude, triage
+from . import backend, claude, triage
 from .config import EFFORTS, load_config
 from .db import Store
 from .github import parse_pr
@@ -215,9 +215,9 @@ def _cmd_edit(args: argparse.Namespace) -> int:
     elif args.claude:
         proposals = [m["proposal"] for m in store.messages_for(f["id"]) if m["proposal"]]
         if not proposals:
-            print("Claude hasn't proposed new wording for this finding.", file=sys.stderr)
+            print("PRelude hasn't proposed new wording for this finding.", file=sys.stderr)
             return 1
-        text, learn = proposals[-1], None  # Claude's words, not the reviewer's
+        text, learn = proposals[-1], None  # proposed wording, not a user edit
     elif args.text is not None:
         text = args.text
     else:
@@ -273,8 +273,8 @@ def _cmd_discuss(args: argparse.Namespace) -> int:
     reply = store.messages_for(f["id"])[-1]
     print()
     if reply["proposal"]:
-        print(f"\nClaude proposes:\n{textwrap.indent(reply['proposal'], '  ')}")
-        print(f"Use it: prelude edit {args.review} {args.number} --claude")
+        print(f"\nPRelude proposes:\n{textwrap.indent(reply['proposal'], '  ')}")
+        print(f"Use it: prelude edit {args.review} {args.number} --proposed")
     if replying.is_alive():
         print("Updating memory…", file=sys.stderr)
         try:
@@ -286,17 +286,17 @@ def _cmd_discuss(args: argparse.Namespace) -> int:
 
 def _cmd_auth(_args: argparse.Namespace) -> int:
     cfg = load_config()
-    auth = claude.auth_for(cfg)
-    print(f"mode: {auth.mode} (claude.auth in config.yaml)")
-    status = claude.auth_status(auth)
+    print(f"backend: {cfg.backend}")
+    if cfg.backend == "claude":
+        print(f"mode: {cfg.claude.auth} (claude.auth in config.yaml)")
+    status = backend.auth_status(cfg)
     safe = {k: status.get(k) for k in ("loggedIn", "authMethod", "apiKeySource", "subscriptionType")}
     print(json.dumps(safe, indent=2))
     try:
-        claude.ensure_logged_in(auth)
-        what = "this API key (billed per token)" if auth.mode == claude.API_KEY else "this login"
-        print(f"OK: PRelude can run reviews with {what}.")
+        backend.ensure_logged_in(cfg)
+        print("OK: PRelude can run reviews with these credentials.")
         return 0
-    except claude.ClaudeNotLoggedIn as e:
+    except backend.LoginError as e:
         print(f"blocked: {e}")
         return 1
 
@@ -441,7 +441,7 @@ def main(argv: list[str] | None = None) -> int:
         choices=("full", "changes"),
         help="re-review after the last review: the whole PR again, or only the new commits",
     )
-    s.add_argument("--effort", choices=EFFORTS, help="how hard Claude thinks (default: claude.effort in config)")
+    s.add_argument("--effort", choices=EFFORTS, help="reasoning effort (default: selected backend effort)")
     s.set_defaults(fn=_cmd_review)
 
     s = sub.add_parser("show", help="print a stored review")
@@ -475,10 +475,12 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("number", type=int)
     how = s.add_mutually_exclusive_group()
     how.add_argument("--text", help="the new wording")
-    how.add_argument("--claude", action="store_true", help="use Claude's latest proposed wording")
-    how.add_argument("--reset", action="store_true", help="back to Claude's original wording")
+    how.add_argument(
+        "--proposed", "--claude", dest="claude", action="store_true", help="use the latest proposed wording"
+    )
+    how.add_argument("--reset", action="store_true", help="back to the original wording")
     s.set_defaults(fn=_cmd_edit)
-    s = sub.add_parser("discuss", help="ask Claude about a finding; prints the reply")
+    s = sub.add_parser("discuss", help="ask the reviewer about a finding; prints the reply")
     s.add_argument("review", type=int)
     s.add_argument("number", type=int)
     s.add_argument("message")
@@ -487,7 +489,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("finding_id", type=int)
     s.add_argument("action")
     s.set_defaults(fn=_cmd_learn)
-    sub.add_parser("auth", help="check the Claude login or API key PRelude will use").set_defaults(fn=_cmd_auth)
+    sub.add_parser("auth", help="check the selected backend login PRelude will use").set_defaults(fn=_cmd_auth)
     s = sub.add_parser("api-key", help="store an Anthropic API key for claude.auth: api_key (input hidden)")
     s.add_argument("--remove", action="store_true", help="delete the stored key")
     s.set_defaults(fn=_cmd_api_key)

@@ -8,6 +8,7 @@
 <section class="review-head">
   <div class="repo">{% if (r.pr_state or 'open') != 'open' %}<span class="tag pr-{{ r.pr_state }}">{{ r.pr_state | capitalize }}</span> {% endif %}{{ r.owner }}/{{ r.repo }}#{{ r.number }}{% if r.author %} · {{ r.author }}{% endif %}{% if r.changed_lines is not none %} · <span class="tag">size/{{ r.changed_lines | size_label }}</span> {{ r.changed_lines }} lines{% endif %}</div>
   <h1>{{ r.title or 'Pull request' }}</h1>
+  <span class="tag">{{ r.backend | capitalize }}</span>
   {% if r.summary %}<p class="summary"><strong>Summary:</strong> {{ r.summary | text }}</p>{% endif %}
   {% if r.body %}
   <details class="description"><summary>Author's description</summary><div class="prose">{{ r.body | text }}</div></details>
@@ -36,8 +37,8 @@
 {% set n_threads = chat_threads | length + comment_threads %}
 {% set n_busy = chat_threads | selectattr('busy') | list | length %}
 <a class="callout small discuss-link" href="/prs/{{ r.owner }}/{{ r.repo }}/{{ r.number }}/discuss">
-  <span>Discuss this PR with Claude{% if n_threads %} · {{ n_threads }} thread{{ '' if n_threads == 1 else 's' }}{% endif %}</span>
-  {% if unread %}<span class="tag accent">{{ unread }} new repl{{ 'y' if unread == 1 else 'ies' }}</span>{% elif n_busy %}<span class="tag">Claude is replying…</span>{% endif %}
+  <span>Discuss this PR with PRelude{% if n_threads %} · {{ n_threads }} thread{{ '' if n_threads == 1 else 's' }}{% endif %}</span>
+  {% if unread %}<span class="tag accent">{{ unread }} new repl{{ 'y' if unread == 1 else 'ies' }}</span>{% elif n_busy %}<span class="tag">PRelude is replying…</span>{% endif %}
   <span class="chev">›</span>
 </a>
 {% endif %}
@@ -89,7 +90,7 @@
 </div>
 {% elif r.status == 'waiting' %}
 <section class="callout small waiting">
-  <p>PRelude found this PR; Claude hasn't looked at it yet. Starting the review checks the PR as it is now.</p>
+  <p>PRelude found this PR; it hasn't been reviewed yet. Starting the review checks the PR as it is now.</p>
   <div class="again">
     <button class="btn primary" hx-post="/reviews/{{ r.id }}/start" hx-include="#start-post, #start-effort" hx-disabled-elt="this">Start review</button>
     {% if drafts_enabled %}
@@ -142,7 +143,7 @@
           hx-disabled-elt="this" title="Only the commits since this review; skips findings you discarded">Changes only</button>
   <button class="btn small" hx-post="/reviews/{{ r.id }}/again" hx-vals='{"mode": "full"}' hx-include="#again-effort"
           hx-disabled-elt="this" title="The whole PR again; skips findings you discarded">Full</button>
-  <select id="again-effort" name="effort" class="effort" aria-label="Effort" title="How hard Claude thinks; higher finds more and uses more of your plan">
+  <select id="again-effort" name="effort" class="effort" aria-label="Effort" title="How hard PRelude thinks; higher finds more and uses more of your plan">
     <option value="">{{ cfg_effort or 'default' }} effort</option>
     {% for e in efforts if e != cfg_effort %}<option value="{{ e }}">{{ e }} effort</option>{% endfor %}
   </select>
@@ -177,7 +178,7 @@
 {% if not tab %}
 <p class="empty-line">
   {% if show == 'pending' and counts.all %}All findings handled.{% if counts.drafted %} Submit your review on <a href="{{ r.url }}/files" target="_blank" rel="noopener">GitHub</a>.{% endif %}
-  {% elif counts.all == 0 %}Claude found nothing worth raising.
+  {% elif counts.all == 0 %}PRelude found nothing worth raising.
   {% else %}Nothing here.{% endif %}
 </p>
 {% endif %}

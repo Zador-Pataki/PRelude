@@ -1,8 +1,8 @@
 # PRelude
 
-**Meta-review a panel of independent AI code reviewers before their comments land on the PR**, for better collaboration with AI in daily coding and reviewing life on GitHub (a harness around [Claude Code](#built-on-claude-code)).
+**Meta-review a panel of independent AI code reviewers before their comments land on the PR**, for better collaboration with AI in daily coding and reviewing life on GitHub (a harness around [Claude Code or Codex](#review-backends)).
 
-A small personal project built on Claude Code. **Note that for code review as a team, Anthropic's
+A small personal project with Claude Code and Codex backends. **Note that for code review as a team, Anthropic's
 [Code Review](https://code.claude.com/docs/en/code-review) is the natural choice and this project
 is not applicable.**
 
@@ -20,16 +20,16 @@ Posting their output straight onto a pull request is noisy; pasting it into one 
 is unmanageable. PRelude treats an AI review the way we treat code: as a proposal that
 gets reviewed.
 
-Claude reads the pull request and proposes review comments. You are the meta-reviewer: you
+The selected backend reads the pull request and proposes review comments. You are the meta-reviewer: you
 go through each comment, push back where it's wrong, and decide what the author actually
 sees. It works the way you'd review a change:
 
 | Code review              | PRelude                                              |
 | ------------------------ | ---------------------------------------------------- |
-| A contributor opens a PR | Claude proposes a set of review comments             |
+| A contributor opens a PR | The backend proposes a set of review comments             |
 | Approve                  | **Add** the comment to your GitHub draft review      |
 | Suggest changes          | **Edit** the wording                                 |
-| Comment thread           | **Discuss** it with Claude, many threads at once     |
+| Comment thread           | **Discuss** it with the reviewer, many threads at once     |
 | Reject                   | **Discard** it                                       |
 | Release                  | You add your own comments and submit on GitHub       |
 | The contributor improves | PRelude **remembers** your principles and style      |
@@ -40,10 +40,10 @@ you can see. New comments start there and you discard the ones you don't want (w
 comments of your own and submit the review yourself (Comment / Approve / Request changes).
 Optionally, each comment is prefixed with `AI review:` so authors know where it came from.
 
-**Discussions run in parallel.** You don't wait for Claude's reply: send, move on to the next
+**Discussions run in parallel.** You don't wait for the reviewer's reply: send, move on to the next
 comment, and come back. Each PR has a discussion page that indexes every live comment as a
 thread, with the ones that have a new reply first, plus threads of your own about anything
-else in the PR. Claude replies to all of them in parallel (with a phone notification if you set
+else in the PR. The reviewer replies to all of them in parallel (with a phone notification if you set
 one up).
 
 ## Ways to use it
@@ -54,15 +54,15 @@ PRelude fits wherever you'd want a careful second reviewer:
   (paste the link, or turn on `triggers` and your own non-draft PRs are reviewed
   automatically). Fix what's right, push, tap **Review again → Changes only**, and repeat
   until the re-review comes back clean. This pairs well with a coding
-  agent: one Claude writes the change, another reviews it, and you judge both. PRelude is
+  agent: one agent writes the change, another reviews it, and you judge both. PRelude is
   developed this way: every PR in this repo went through several such rounds.
 - **Get a second opinion on a risky change.** Ask for a panel (3 or 5 reviewers, or add
   more later with **+N**) and see which problems several reviewers found independently.
 - **Answer review requests faster.** With `triggers` on, when a colleague requests your
   review, a draft is waiting by the time you look; you keep, reword or drop each comment
   and submit.
-- **Ask Claude about a PR while you work through it.** On the PR's discussion page, every
-  comment is a thread (push back there and Claude can revise or withdraw it), and so is
+- **Ask the reviewer about a PR while you work through it.** On the PR's discussion page, every
+  comment is a thread (push back there and the reviewer can revise or withdraw it), and so is
   each question of your own, like how a change works or whether a case is covered. They
   run in parallel: ask, move on, and come back to the answers.
 - **First pass on contributions to a project you maintain.** Turn on `triggers`, add your
@@ -72,21 +72,39 @@ PRelude fits wherever you'd want a careful second reviewer:
 All of it works from the phone, a laptop browser, or the terminal (`prelude findings`,
 `prelude draft`, `prelude discard`, … see [From the terminal](#from-the-terminal)).
 
-## Built on Claude Code
+## Review backends
 
-PRelude is a harness around [Claude Code](https://claude.com/claude-code), not a model or
-reviewer of its own. Every review, discussion and memory update is a headless run of the
-official `claude` CLI, using your own Claude Code login (a Claude subscription); PRelude
-supplies the prompts, the read-only sandbox and the workflow around the results:
+PRelude runs the official [Claude Code](https://claude.com/claude-code) or
+[Codex](https://developers.openai.com/codex/cli/) CLI under your own login. The selected
+backend reads the code, proposes comments, and answers discussions; PRelude supplies the
+review panels, saved conversations, reviewer memory, and GitHub workflow. Usage is charged
+according to the backend's login and plan.
 
-- **Claude Code does the thinking:** reading the PR and the surrounding code, finding
-  problems, drafting comments, and answering when you push back.
-- **PRelude does everything else:** deciding what to review, checking out the PR read-only,
-  running independent reviewers and merging their reports, keeping one conversation per
-  finding (forked Claude Code sessions), learning your preferences, the phone UI, and
-  writing comments only into your private pending GitHub review.
+Claude remains the default. To use Codex, install its CLI, run `codex login`, then set
+this in `.prelude-data/config.yaml` (or `$PRELUDE_HOME/config.yaml`) and restart PRelude:
 
-So review quality follows Claude Code's, and usage counts against your Claude plan.
+```yaml
+backend: codex
+codex:
+  model: null                    # CLI default, or a model available to your login
+  effort: null                   # CLI default, or an effort supported by that model
+  reviewers: auto
+```
+
+`codex:` supports the same reviewer counts, size thresholds, lenses and timeouts as
+`claude:`. Run `prelude auth` to check the selected backend. Codex uses its saved CLI
+credentials; PRelude does not forward `OPENAI_API_KEY` or `CODEX_API_KEY` from its own
+environment. `prelude api-key` remains specific to Claude.
+
+Codex requires a CLI with `exec fork`, `--output-schema`, `--ignore-user-config`, and
+`--ignore-rules` (tested with 0.162.0). PRelude ignores its user config so model and effort
+should be set here. Discussions receive complete assistant messages as the CLI emits
+them, rather than token-by-token updates. Codex does not report a dollar cost through this
+interface, so PRelude leaves it blank.
+
+Saved reviews and discussions keep the backend that created them, even after you change
+`backend`. Switching providers applies to new reviews and memory updates. Keep the old
+CLI installed and logged in if you want to continue its saved discussions.
 
 ### Use within Anthropic's terms
 
@@ -127,15 +145,14 @@ October 2026:
 
 ### 1. Install
 
-You need Python 3.12+, [Claude Code](https://claude.com/claude-code) logged in with your
-Claude subscription (`claude auth status`; or an Anthropic API key, see below) and the
-GitHub CLI logged in (`gh auth status`). Then:
+You need Python 3.12+, your chosen [review backend](#review-backends) installed and logged
+in, and the GitHub CLI logged in (`gh auth status`). Then:
 
 ```bash
-git clone https://github.com/B1ueber2y/PRelude.git && cd PRelude
+git clone https://github.com/Zador-Pataki/PRelude.git && cd PRelude
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
-.venv/bin/prelude auth        # checks the Claude login PRelude will use
+.venv/bin/prelude auth        # checks the selected backend (configure Codex first if using it)
 ```
 
 Data (database, checkouts, memory, config) lives in `.prelude-data/` unless `PRELUDE_HOME`
@@ -230,13 +247,19 @@ Everything also works without the web UI; `N` is the number `prelude findings` s
 .venv/bin/prelude findings 32            # list a review's findings (add numbers for the full text)
 .venv/bin/prelude draft 32 1 3           # add to your GitHub draft (--all: every one still to review)
 .venv/bin/prelude discard 32 2           # discard (also takes it out of the draft)
-.venv/bin/prelude edit 32 1              # reword in $EDITOR (--text "...", --claude, --reset)
+.venv/bin/prelude edit 32 1              # reword in $EDITOR (--text "...", --proposed, --reset)
 .venv/bin/prelude discuss 32 1 "Is this really reachable?"
 .venv/bin/prelude style-init OWNER/REPO  # learn your comment style from your past comments
 ```
 
 ## Safety
 
+- Codex uses its read-only sandbox with approvals disabled. Unlike Claude's file-only
+  tool list, Codex can run sandboxed shell commands. User config and exec rules are ignored,
+  the checkout is marked untrusted, project instructions are not loaded, and app/plugin
+  integrations and web search are disabled. GitHub and unrelated API tokens are removed
+  from its environment. The sandbox restricts writes and command network access; it is
+  not a guarantee that locally readable files or credentials cannot appear in model output.
 - Claude runs headlessly with read-only tools (`Read`, `Grep`, `Glob`) in a read-only
   checkout, with settings, hooks, plugins and MCP servers disabled, so code in the
   reviewed repository is never executed. Only the credential you chose reaches it: on the

@@ -49,7 +49,7 @@ def _index(request: Request, w: Web, **extra) -> HTMLResponse:
         {
             **_review_list(w),
             "only_repo": w.cfg.only_repo,
-            "default_reviewers": w.cfg.claude.reviewers,
+            "default_reviewers": w.cfg.agent.reviewers,
             "watching": w.cfg.triggers.enabled and hasattr(request.app.state, "poller"),
             "last_poll": float(last_poll) if last_poll else None,
             "cap_used": reviews_toward_cap(w.store, w.cfg.triggers),
@@ -118,7 +118,7 @@ def review_page(w: WebDep, request: Request, review_id: int, show: str | None = 
             "show": show,
             "counts": counts,
             "efforts": EFFORTS,
-            "cfg_effort": w.cfg.claude.effort,
+            "cfg_effort": w.cfg.agent.effort,
             "repo_posts": drafting.posts(w.cfg, r),
             "drafts_enabled": w.cfg.drafts.enabled,
             "drafts_auto": w.cfg.drafts.auto,

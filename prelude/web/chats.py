@@ -1,4 +1,4 @@
-"""A PR's discussion space: threads with Claude, like threads in a chat room."""
+"""A PR's discussion space: threads with the reviewer, like threads in a chat room."""
 
 from __future__ import annotations
 
@@ -106,7 +106,7 @@ def reply(w: WebDep, request: Request, chat_id: int, text: str = Form(...)):
 @router.post("/chats/{chat_id}/delete", response_class=HTMLResponse)
 def delete(w: WebDep, chat_id: int):
     if _chat_or_404(w, chat_id)["busy"]:
-        return w.flash("Claude is still replying in this thread; delete it when it's done.")
+        return w.flash("PRelude is still replying in this thread; delete it when it's done.")
     w.store.delete_chat(chat_id)
     return HTMLResponse("")
 

@@ -9,7 +9,7 @@ import traceback
 import urllib.error
 from pathlib import Path
 
-from . import claude
+from . import backend
 from .config import REPO_ROOT, Config
 from .workspace import GitError
 
@@ -22,10 +22,10 @@ def reason(exc: BaseException) -> str:
     """What broke, in words that are safe to send through a public notification relay."""
     if isinstance(exc, PrMoved):
         return "The PR has new commits; use Review again"
-    if isinstance(exc, claude.ClaudeNotLoggedIn):
-        return "Claude login needed"
-    if isinstance(exc, claude.ClaudeError):
-        return "Claude timed out" if "timed out" in str(exc) else "Claude run failed"
+    if isinstance(exc, backend.LoginError):
+        return f"{exc.provider} login needed"
+    if isinstance(exc, backend.RunError):
+        return f"{exc.provider} timed out" if "timed out" in str(exc) else f"{exc.provider} run failed"
     if isinstance(exc, GitError):
         return "Couldn't check out the PR"
     if isinstance(exc, urllib.error.HTTPError | urllib.error.URLError):

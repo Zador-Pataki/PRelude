@@ -8,7 +8,7 @@
 <section class="review-head">
   <div class="repo">{{ ref }}</div>
   <h1>{{ (review.title if review else None) or 'Pull request' }}</h1>
-  <p class="hint">Every discussion of this PR in one place. Send a message, move on, and come back: replies are saved, marked “new reply”, and Claude works on several threads at once.</p>
+  <p class="hint">Every discussion of this PR in one place. Send a message, move on, and come back: replies are saved, marked “new reply”, and PRelude works on several threads at once.</p>
 </section>
 
 {% if comments %}
@@ -21,7 +21,7 @@
 {% endif %}
 
 <h2 class="section-title">Other threads</h2>
-<p class="hint">Anything else about the PR, the code or the review. Each message you start here is its own thread.{% if source %} Claude sees the code at <code>{{ (source.head_sha or '')[:7] }}</code>, as of the review from {{ (source.finished_at or source.created_at) | ago }}.{% endif %}</p>
+<p class="hint">Anything else about the PR, the code or the review. Each message you start here is its own thread.{% if source %} PRelude sees the code at <code>{{ (source.head_sha or '')[:7] }}</code>, as of the review from {{ (source.finished_at or source.created_at) | ago }}.{% endif %}</p>
 <div id="chats" class="chats">
 {% for t in threads %}
   {% with c=t.c, messages=t.messages, open=t.open %}{% include "_chat.html" %}{% endwith %}

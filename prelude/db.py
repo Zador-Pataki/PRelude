@@ -189,6 +189,7 @@ class Store:
                     "action": "TEXT",
                 },
             )
+            _add_missing_columns(c, "chats", {"backend": "TEXT NOT NULL DEFAULT 'claude'"})
             _add_missing_columns(c, "watched", {"updated_at": "TEXT", "request_used": "TEXT"})
             if "seen_at" not in {r[1] for r in c.execute("PRAGMA table_info(threads)")}:
                 _add_missing_columns(c, "threads", {"seen_at": "REAL NOT NULL DEFAULT 0"})
@@ -197,6 +198,7 @@ class Store:
                 c,
                 "reviews",
                 {
+                    "backend": "TEXT NOT NULL DEFAULT 'claude'",
                     "reviewers": "INTEGER NOT NULL DEFAULT 1",
                     "reports": "TEXT",
                     "changed_lines": "INTEGER",
@@ -210,7 +212,7 @@ class Store:
                     "pr_checked_at": "REAL",
                     "pr_comments": "TEXT",
                     "comment_status": "TEXT",
-                    "effort": "TEXT",  # chosen for this review; NULL: claude.effort
+                    "effort": "TEXT",  # chosen for this review; NULL: backend config
                     "post": "INTEGER",  # 1 post on the PR, 0 your draft; NULL: triggers.auto_post
                 },
             )
@@ -292,13 +294,27 @@ class Store:
         previous_review_id: int | None = None,
         mode: str = "full",
         effort: str | None = None,
+        backend: str = "claude",
     ) -> int:
         now = time.time()
         with self.connect() as c:
             cur = c.execute(
                 "INSERT INTO reviews (owner, repo, number, url, trigger_reason, reviewers, previous_review_id, mode,"
-                " effort, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)",
-                (owner, repo, number, url, trigger_reason, reviewers, previous_review_id, mode, effort, now, now),
+                " effort, backend, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)",
+                (
+                    owner,
+                    repo,
+                    number,
+                    url,
+                    trigger_reason,
+                    reviewers,
+                    previous_review_id,
+                    mode,
+                    effort,
+                    backend,
+                    now,
+                    now,
+                ),
             )
             return int(cur.lastrowid)
 
@@ -708,7 +724,7 @@ class Store:
         with self.connect() as c:
             cur = c.execute(
                 "INSERT INTO chats (owner, repo, number, review_id, head_sha, worktree, base_session_id,"
-                " busy, seen_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)",
+                " backend, busy, seen_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)",
                 (
                     review["owner"],
                     review["repo"],
@@ -717,6 +733,7 @@ class Store:
                     review["head_sha"],
                     review["worktree"],
                     review["claude_session_id"],
+                    review["backend"],
                     now,
                     now,
                     now,

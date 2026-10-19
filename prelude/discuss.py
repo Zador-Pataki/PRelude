@@ -6,10 +6,10 @@ import logging
 import queue
 import threading
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
-from . import claude, memory_agent, notify
+from . import backend, memory_agent, notify
 from .config import Config
 from .db import Store
 from .drafts import DraftError, DraftWriter
@@ -80,7 +80,7 @@ def post_message(
     ping: bool = True,
     writer: DraftWriter | None = None,
 ) -> threading.Thread:
-    """Store the reviewer's message and start Claude's reply in the background (`ping`: notify when ready)."""
+    """Store the reviewer's message and start the reply in the background (`ping`: notify when ready)."""
     text = text.strip()
     if not text:
         raise ValueError("empty message")
@@ -89,9 +89,10 @@ def post_message(
         raise KeyError(finding_id)
     review = store.get_review(finding["review_id"])
     if review is None or not review["claude_session_id"] or not review["worktree"]:
-        raise ValueError("this review has no Claude session to continue")
+        raise ValueError("this review has no reviewer session to continue")
+    cfg = replace(cfg, backend=review["backend"])
     if not store.try_lock_thread(finding_id):
-        raise DiscussionBusy("Claude is still replying to the previous message")
+        raise DiscussionBusy("PRelude is still replying to the previous message")
 
     store.add_message(finding_id, "user", text)
     broker.reset(finding_id)
@@ -126,14 +127,14 @@ def post_message(
 
 
 def _withdraw(store: Store, cfg: Config, writer: DraftWriter, finding_id: int) -> None:
-    """Claude agrees the comment shouldn't be made: discard it, and take it out of the GitHub draft."""
+    """The reviewer agrees the comment shouldn't be made: discard it, and take it out of the GitHub draft."""
     from . import drafting  # drafting imports this module
 
     if store.get_finding(finding_id)["status"] not in ("pending", "drafted"):
         return
     try:
         drafting.remove(store, cfg, writer, finding_id, new_status="discarded")
-    except Exception as e:  # GitHub refused or unreachable: Claude's reply itself still stands
+    except Exception as e:  # GitHub refused or unreachable: the reply itself still stands
         if not isinstance(e, DraftError):
             log.warning("couldn't remove the draft of withdrawn finding %s", finding_id, exc_info=True)
         store.add_message(finding_id, "error", f"Couldn't remove the GitHub draft comment: {e}"[:2000])
@@ -155,18 +156,18 @@ def _reply(
     changed_mind = False
     final = Event("done")
     try:
-        claude.ensure_logged_in(claude.auth_for(cfg))
-        result = claude.run_stream(
+        backend.ensure_logged_in(cfg)
+        result = backend.run_stream(
+            cfg,
             prompt,
             worktree,
             on_text=lambda s: broker.publish(finding_id, Event("text", s)),
             on_activity=lambda name: broker.publish(finding_id, Event("activity", name)),
-            model=cfg.claude.model,
-            effort=cfg.claude.effort,
+            model=cfg.agent.model,
+            effort=cfg.agent.effort,
             resume=resume,
             fork=fork,
-            timeout=cfg.claude.discuss_timeout_seconds,
-            auth=claude.auth_for(cfg),
+            timeout=cfg.agent.discuss_timeout_seconds,
         )
         session_id = result.session_id
         text, proposal, verdict = parse_reply(result.text)
@@ -189,5 +190,5 @@ def _reply(
         pr = (review["owner"], review["repo"], review["number"])
         notify.reply_ready(cfg.notify, pr, review["title"], final.kind == "done", f"/findings/{finding_id}")
     if changed_mind:
-        # The reviewer changed Claude's mind: maybe a lasting preference.
+        # The discussion changed the finding: maybe a lasting preference.
         memory_agent.learn_from_finding(store, cfg, finding_id, "discuss")

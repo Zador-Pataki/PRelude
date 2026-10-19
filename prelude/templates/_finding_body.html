@@ -25,7 +25,7 @@
   {% endif %}
 
   <section class="block">
-    <h2>Why Claude flagged this</h2>
+    <h2>Why PRelude flagged this</h2>
     <div class="prose">{{ f.assessment | text }}</div>
     {% set ev = f.evidence | fromjson %}
     {% if ev %}
@@ -40,7 +40,7 @@
   </section>
 
   <section class="block" id="discussion">
-    <h2>Discuss with Claude</h2>
+    <h2>Discuss with PRelude</h2>
     <div id="thread-{{ f.id }}">
       {% include "_thread.html" %}
     </div>

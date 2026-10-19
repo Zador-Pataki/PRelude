@@ -4,7 +4,7 @@
   <summary>
     <div class="chat-first">{{ c.first_message }}</div>
     <div class="meta">
-      {%- if c.busy %}<span class="spinner small" aria-hidden="true"></span> Claude is replying…
+      {%- if c.busy %}<span class="spinner small" aria-hidden="true"></span> PRelude is replying…
       {%- elif c.replies > 0 %}{{ c.replies }} repl{{ 'y' if c.replies == 1 else 'ies' }} · {{ (c.last_at or c.created_at) | ago }}
       {%- else %}{{ c.created_at | ago }}{% endif %}
       {%- if c.unread and not c.busy %} <span class="tag accent unread">new reply</span>{% endif -%}
@@ -18,13 +18,13 @@
       {% elif m.role == 'assistant' %}
       <div class="msg claude"><div class="prose">{{ m.content | text }}</div></div>
       {% else %}
-      <div class="msg error">Claude couldn't reply: {{ m.content }}</div>
+      <div class="msg error">PRelude couldn't reply: {{ m.content }}</div>
       {% endif %}
     {% endfor %}
     {% if c.busy %}
     <div class="msg claude live" aria-live="polite">
       <div class="prose live-text"></div>
-      <div class="activity"><span class="spinner small" aria-hidden="true"></span> <span class="activity-text">Claude is thinking…</span></div>
+      <div class="activity"><span class="spinner small" aria-hidden="true"></span> <span class="activity-text">PRelude is thinking…</span></div>
     </div>
     {% endif %}
     {% if error %}<p class="error">{{ error }}</p>{% endif %}
